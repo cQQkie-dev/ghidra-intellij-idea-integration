@@ -54,11 +54,17 @@ through Ghidra's Extension Manager, then restart Ghidra.
    ```
 
 2. Select a local script.
-3. Right-click the script.
-4. Choose:
+
+3. Open it through either integration action:
 
    ```text
-   Edit with IntelliJ IDEA
+   Script Manager toolbar → IntelliJ IDEA icon
+   ```
+
+   or:
+
+   ```text
+   Right-click script → Edit with IntelliJ IDEA
    ```
 
 ## Configuration

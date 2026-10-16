@@ -31,6 +31,7 @@ import javax.swing.table.TableModel;
 
 import docking.ActionContext;
 import docking.ComponentProvider;
+import docking.action.DockingAction;
 import docking.action.DockingActionIf;
 import docking.action.MenuData;
 import docking.action.ToolBarData;
@@ -85,6 +86,9 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
 
     private ToolOptions options;
 
+    private ComponentProvider scriptManagerProvider;
+    private DockingAction scriptManagerToolbarAction;
+
     private final Map<DockingActionIf, String> originalToolbarSubgroups =
         new IdentityHashMap<>();
 
@@ -125,8 +129,15 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
      * local action is required for the Script Manager toolbar so it does not appear in the
      * CodeBrowser global toolbar or duplicate the popup entry.
      */
+    /**
+     * Adds an IntelliJ IDEA toolbar button to Ghidra's Script Manager.
+     *
+     * The existing global action provides the Script Manager right-click popup item. A separate
+     * local action is required for the Script Manager toolbar so it does not appear in the
+     * CodeBrowser global toolbar or duplicate the popup entry.
+     */
     private void installScriptManagerToolbarAction() {
-        ComponentProvider scriptManagerProvider =
+        scriptManagerProvider =
             tool.getComponentProvider("Script Manager");
 
         if (scriptManagerProvider == null) {
@@ -138,15 +149,21 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
             return;
         }
 
-        new ActionBuilder("Edit with IntelliJ IDEA Toolbar", getName())
-            .toolBarIcon(INTELLIJ_IDEA_ICON)
-            .toolBarGroup(null, IDEA_EDITOR_SUBGROUP)
-            .description("Edit Script with IntelliJ IDEA")
-            .enabledWhen(this::isScriptFileContext)
-            .onAction(this::openSelectedScriptInIdea)
-            .buildAndInstallLocal(scriptManagerProvider);
-
+        /*
+         * Set built-in action ordering first. Adding the IDEA action afterward causes Ghidra to
+         * rebuild the Script Manager toolbar using the desired subgroups immediately, including
+         * when this plug-in is disabled and re-enabled while Script Manager remains open.
+         */
         organizeScriptManagerEditToolbar(scriptManagerProvider);
+
+        scriptManagerToolbarAction =
+            new ActionBuilder("Edit with IntelliJ IDEA Toolbar", getName())
+                .toolBarIcon(INTELLIJ_IDEA_ICON)
+                .toolBarGroup(null, IDEA_EDITOR_SUBGROUP)
+                .description("Edit Script with IntelliJ IDEA")
+                .enabledWhen(this::isScriptFileContext)
+                .onAction(this::openSelectedScriptInIdea)
+                .buildAndInstallLocal(scriptManagerProvider);
     }
 
     /**
@@ -226,6 +243,8 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
 
     @Override
     protected void dispose() {
+        removeScriptManagerToolbarAction();
+
         originalToolbarSubgroups.forEach((action, subgroup) -> {
             ToolBarData toolbarData = action.getToolBarData();
 
@@ -246,6 +265,20 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
         originalPopupSubgroups.clear();
 
         super.dispose();
+    }
+
+    private void removeScriptManagerToolbarAction() {
+        if (scriptManagerProvider == null || scriptManagerToolbarAction == null) {
+            return;
+        }
+
+        tool.removeLocalAction(
+            scriptManagerProvider,
+            scriptManagerToolbarAction
+        );
+
+        scriptManagerToolbarAction = null;
+        scriptManagerProvider = null;
     }
 
     private boolean isScriptFileContext(ActionContext context) {
