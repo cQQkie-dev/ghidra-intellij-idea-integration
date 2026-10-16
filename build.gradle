@@ -1,0 +1,30 @@
+// Builds the IntelliJ IDEA Integration Ghidra extension.
+//
+// GHIDRA_INSTALL_DIR is read from ignored local gradle.properties, an environment
+// variable, or a -PGHIDRA_INSTALL_DIR=<path> command-line property.
+
+def ghidraInstallDir =
+    System.getenv("GHIDRA_INSTALL_DIR") ?:
+    providers.gradleProperty("GHIDRA_INSTALL_DIR").orNull
+
+if (!ghidraInstallDir) {
+    throw new GradleException(
+        "GHIDRA_INSTALL_DIR is not defined. " +
+        "Set it in gradle.properties, as an environment variable, or with " +
+        "-PGHIDRA_INSTALL_DIR=<path>."
+    )
+}
+
+apply from: new File(ghidraInstallDir).getCanonicalPath() +
+    "/support/buildExtension.gradle"
+
+buildExtension.exclude '.idea/**'
+buildExtension.exclude '*.iml'
+buildExtension.exclude 'gradle/**'
+buildExtension.exclude 'gradle.properties'
+
+task distributeExtension {
+    group = "Ghidra"
+    description = "Build and package the IntelliJ IDEA Integration extension."
+    dependsOn buildExtension
+}
