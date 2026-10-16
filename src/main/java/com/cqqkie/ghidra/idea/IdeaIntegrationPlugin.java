@@ -28,6 +28,7 @@ import javax.swing.ImageIcon;
 import javax.swing.table.TableModel;
 
 import docking.ActionContext;
+import docking.ComponentProvider;
 import docking.action.builder.ActionBuilder;
 import docking.widgets.table.GTable;
 import docking.widgets.table.RowObjectTableModel;
@@ -35,6 +36,7 @@ import generic.jar.ResourceFile;
 import ghidra.app.CorePluginPackage;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.plugin.ProgramPlugin;
+import ghidra.app.services.GhidraScriptService;
 import ghidra.framework.main.AppInfo;
 import ghidra.framework.options.ToolOptions;
 import ghidra.framework.plugintool.PluginInfo;
@@ -52,7 +54,8 @@ import ghidra.util.Msg;
     packageName = CorePluginPackage.NAME,
     category = PluginCategoryNames.COMMON,
     shortDescription = "IntelliJ IDEA Integration",
-    description = "Opens Script Manager scripts in IntelliJ IDEA through a loopback listener."
+    description = "Opens Script Manager scripts in IntelliJ IDEA through a loopback listener.",
+    servicesRequired = { GhidraScriptService.class }
 )
 //@formatter:on
 public class IdeaIntegrationPlugin extends ProgramPlugin {
@@ -89,6 +92,37 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
             .enabledWhen(this::isScriptFileContext)
             .onAction(this::openSelectedScriptInIdea)
             .buildAndInstall(tool);
+
+        installScriptManagerToolbarAction();
+    }
+
+    /**
+     * Adds an IntelliJ IDEA toolbar button to Ghidra's Script Manager.
+     *
+     * The existing global action provides the Script Manager right-click popup item. A separate
+     * local action is required for the Script Manager toolbar so it does not appear in the
+     * CodeBrowser global toolbar or duplicate the popup entry.
+     */
+    private void installScriptManagerToolbarAction() {
+        ComponentProvider scriptManagerProvider =
+            tool.getComponentProvider("Script Manager");
+
+        if (scriptManagerProvider == null) {
+            Msg.warn(
+                this,
+                "Unable to add the IntelliJ IDEA toolbar button because the " +
+                    "Script Manager component provider was not found."
+            );
+            return;
+        }
+
+        new ActionBuilder("Edit with IntelliJ IDEA Toolbar", getName())
+            .toolBarIcon(INTELLIJ_IDEA_ICON)
+            .toolBarGroup(null)
+            .description("Edit Script with IntelliJ IDEA")
+            .enabledWhen(this::isScriptFileContext)
+            .onAction(this::openSelectedScriptInIdea)
+            .buildAndInstallLocal(scriptManagerProvider);
     }
 
     private boolean isScriptFileContext(ActionContext context) {
