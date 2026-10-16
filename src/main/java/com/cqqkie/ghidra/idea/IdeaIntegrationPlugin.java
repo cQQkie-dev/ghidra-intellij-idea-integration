@@ -23,12 +23,17 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.table.TableModel;
 
 import docking.ActionContext;
 import docking.ComponentProvider;
+import docking.action.DockingActionIf;
+import docking.action.MenuData;
+import docking.action.ToolBarData;
 import docking.action.builder.ActionBuilder;
 import docking.widgets.table.GTable;
 import docking.widgets.table.RowObjectTableModel;
@@ -62,6 +67,16 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
 
     private static final String LOOPBACK_ADDRESS = "127.0.0.1";
     private static final int CONNECT_TIMEOUT_MILLIS = 1_500;
+    private static final String SCRIPT_MANAGER_OWNER = "GhidraScriptMgrPlugin";
+
+    private static final String BASIC_EDITOR_ACTION_NAME = "Edit";
+    private static final String ECLIPSE_EDITOR_ACTION_NAME = "EditEclipse";
+    private static final String VSCODE_EDITOR_ACTION_NAME = "EditVSCode";
+
+    private static final String BASIC_EDITOR_SUBGROUP = "10";
+    private static final String ECLIPSE_EDITOR_SUBGROUP = "20";
+    private static final String IDEA_EDITOR_SUBGROUP = "30";
+    private static final String VSCODE_EDITOR_SUBGROUP = "40";
     private static final Icon INTELLIJ_IDEA_ICON = new ImageIcon(
         IdeaIntegrationPlugin.class.getResource(
             "/images/intellij-idea-16.png"
@@ -69,6 +84,12 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
     );
 
     private ToolOptions options;
+
+    private final Map<DockingActionIf, String> originalToolbarSubgroups =
+        new IdentityHashMap<>();
+
+    private final Map<DockingActionIf, String> originalPopupSubgroups =
+        new IdentityHashMap<>();
 
     public IdeaIntegrationPlugin(PluginTool tool) {
         super(tool);
@@ -87,6 +108,7 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
         new ActionBuilder("Edit with IntelliJ IDEA", getName())
             .popupMenuPath("Edit with IntelliJ IDEA")
             .popupMenuIcon(INTELLIJ_IDEA_ICON)
+            .popupMenuGroup(null, IDEA_EDITOR_SUBGROUP)
             .description("Open the selected script in IntelliJ IDEA")
             .popupWhen(this::isScriptFileContext)
             .enabledWhen(this::isScriptFileContext)
@@ -118,11 +140,112 @@ public class IdeaIntegrationPlugin extends ProgramPlugin {
 
         new ActionBuilder("Edit with IntelliJ IDEA Toolbar", getName())
             .toolBarIcon(INTELLIJ_IDEA_ICON)
-            .toolBarGroup(null)
+            .toolBarGroup(null, IDEA_EDITOR_SUBGROUP)
             .description("Edit Script with IntelliJ IDEA")
             .enabledWhen(this::isScriptFileContext)
             .onAction(this::openSelectedScriptInIdea)
             .buildAndInstallLocal(scriptManagerProvider);
+
+        organizeScriptManagerEditToolbar(scriptManagerProvider);
+    }
+
+    /**
+     * Groups the built-in and companion external-editor actions together in Script Manager's
+     * local toolbar. The built-in actions do not define toolbar subgroups, so the companion
+     * action would otherwise sort after all Script Manager actions by owner name.
+     */
+    private void organizeScriptManagerEditToolbar(
+            ComponentProvider scriptManagerProvider) {
+
+        setBuiltInActionSubgroups(
+            scriptManagerProvider,
+            BASIC_EDITOR_ACTION_NAME,
+            BASIC_EDITOR_SUBGROUP
+        );
+
+        setBuiltInActionSubgroups(
+            scriptManagerProvider,
+            ECLIPSE_EDITOR_ACTION_NAME,
+            ECLIPSE_EDITOR_SUBGROUP
+        );
+
+        setBuiltInActionSubgroups(
+            scriptManagerProvider,
+            VSCODE_EDITOR_ACTION_NAME,
+            VSCODE_EDITOR_SUBGROUP
+        );
+    }
+
+    /**
+     * Assigns matching toolbar and popup subgroups to Script Manager's built-in editor actions.
+     *
+     * The Script Manager does not assign explicit subgroups to its built-in editor actions.
+     * Without these values, the companion action is sorted separately by owner name.
+     */
+    private void setBuiltInActionSubgroups(
+            ComponentProvider scriptManagerProvider,
+            String actionName,
+            String subgroup) {
+
+        for (DockingActionIf action :
+                tool.getLocalActions(scriptManagerProvider)) {
+
+            if (!SCRIPT_MANAGER_OWNER.equals(action.getOwner()) ||
+                    !actionName.equals(action.getName())) {
+                continue;
+            }
+
+            ToolBarData toolbarData = action.getToolBarData();
+            if (toolbarData != null) {
+                originalToolbarSubgroups.putIfAbsent(
+                    action,
+                    toolbarData.getToolBarSubGroup()
+                );
+
+                toolbarData.setToolBarSubGroup(subgroup);
+            }
+
+            MenuData popupData = action.getPopupMenuData();
+            if (popupData != null) {
+                originalPopupSubgroups.putIfAbsent(
+                    action,
+                    popupData.getMenuSubGroup()
+                );
+
+                popupData.setMenuSubGroup(subgroup);
+            }
+
+            return;
+        }
+
+        Msg.warn(
+            this,
+            "Unable to locate Script Manager editor action: " + actionName
+        );
+    }
+
+    @Override
+    protected void dispose() {
+        originalToolbarSubgroups.forEach((action, subgroup) -> {
+            ToolBarData toolbarData = action.getToolBarData();
+
+            if (toolbarData != null) {
+                toolbarData.setToolBarSubGroup(subgroup);
+            }
+        });
+
+        originalPopupSubgroups.forEach((action, subgroup) -> {
+            MenuData popupData = action.getPopupMenuData();
+
+            if (popupData != null) {
+                popupData.setMenuSubGroup(subgroup);
+            }
+        });
+
+        originalToolbarSubgroups.clear();
+        originalPopupSubgroups.clear();
+
+        super.dispose();
     }
 
     private boolean isScriptFileContext(ActionContext context) {
